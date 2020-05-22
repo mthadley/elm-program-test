@@ -5,6 +5,7 @@ module ProgramTest exposing
     , withBaseUrl, withJsonStringFlags
     , withSimulatedEffects, SimulatedEffect, SimulatedTask
     , withSimulatedSubscriptions, SimulatedSub
+    , withGlobalJavascriptDomEventHandler
     , done
     , expectViewHas, expectViewHasNot, expectView
     , ensureViewHas, ensureViewHasNot, ensureView
@@ -93,6 +94,7 @@ The following functions allow you to configure your
 
 @docs withSimulatedEffects, SimulatedEffect, SimulatedTask
 @docs withSimulatedSubscriptions, SimulatedSub
+@docs withGlobalJavascriptDomEventHandler
 
 
 ## Ending a test
@@ -231,6 +233,7 @@ type ProgramTest model msg effect
         { program : TestProgram model msg effect (SimulatedSub msg)
         , currentModel : model
         , lastEffect : effect
+        , globalEventHandler : Maybe GlobalEventHandler
         , navigation :
             Maybe
                 { currentLocation : Url
@@ -269,7 +272,18 @@ type alias ProgramOptions model msg effect =
     { baseUrl : Maybe Url
     , deconstructEffect : Maybe (effect -> SimulatedEffect msg)
     , subscriptions : Maybe (model -> SimulatedSub msg)
+    , globalEventHandler : Maybe GlobalEventHandler
     }
+
+
+type alias GlobalEventHandler =
+    String
+    -> Json.Encode.Value
+    ->
+        { stopPropagation : Bool
+        , preventDefault : Bool
+        , produceIncomingPortValues : List ( String, Json.Encode.Value )
+        }
 
 
 emptyOptions : ProgramOptions model msg effect
@@ -277,6 +291,7 @@ emptyOptions =
     { baseUrl = Nothing
     , deconstructEffect = Nothing
     , subscriptions = Nothing
+    , globalEventHandler = Nothing
     }
 
 
@@ -311,6 +326,7 @@ createHelper program options =
         { program = program_
         , currentModel = newModel
         , lastEffect = newEffect
+        , globalEventHandler = options.globalEventHandler
         , navigation =
             case options.baseUrl of
                 Nothing ->
@@ -484,6 +500,21 @@ withSimulatedSubscriptions :
     -> ProgramDefinition flags model msg effect
 withSimulatedSubscriptions fn (ProgramDefinition options program) =
     ProgramDefinition { options | subscriptions = Just fn } program
+
+
+withGlobalJavascriptDomEventHandler :
+    (String
+     -> Json.Encode.Value
+     ->
+        { stopPropagation : Bool
+        , preventDefault : Bool
+        , produceIncomingPortValues : List ( String, Json.Encode.Value )
+        }
+    )
+    -> ProgramDefinition flags model msg effect
+    -> ProgramDefinition flags model msg effect
+withGlobalJavascriptDomEventHandler handler (ProgramDefinition options program) =
+    ProgramDefinition { options | globalEventHandler = Just handler } program
 
 
 {-| Creates a `ProgramTest` from the parts of a [`Browser.document`](https://package.elm-lang.org/packages/elm/browser/latest/Browser#document) program.
@@ -1069,7 +1100,19 @@ clickLink linkText href programTest =
 
                     else
                         -- the link doesn't have a click handler
-                        tryClickingProgramTest |> otherwise
+                        case state.globalEventHandler of
+                            Just handler ->
+                                let
+                                    { produceIncomingPortValues } =
+                                        handler "click" Json.Encode.null
+                                in
+                                List.foldl
+                                    (\( portName, value ) -> simulateIncomingPort portName value)
+                                    tryClickingProgramTest
+                                    produceIncomingPortValues
+
+                            Nothing ->
+                                tryClickingProgramTest |> otherwise
 
         respondsTo event single =
             case

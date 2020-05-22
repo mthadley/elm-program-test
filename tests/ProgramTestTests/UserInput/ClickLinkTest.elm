@@ -73,6 +73,15 @@ all =
                     |> ProgramTest.start ()
                     |> ProgramTest.clickLink "SPA" "#search"
                     |> ProgramTest.expectModel (Expect.equal "<INIT:/>;GoToSearch")
+        , describe "event bubbling"
+            [ todo "for a link without a click handler, triggers the handlers on it's ancestors"
+            , todo "for a link with a click handler, triggers handlers on it's ancestors in the correct order"
+            , todo "calling stopPropagation on the link doesn't call the handler on the ancestor"
+            ]
+        , describe "preventDefault"
+            [ todo "program ends unless preventDefault was called when there is a click handler"
+            , todo "any preventDefault calls during bubbling allow the program to continue"
+            ]
         ]
 
 
