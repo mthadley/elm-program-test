@@ -1035,6 +1035,14 @@ clickLink linkText href programTest =
                 ]
             )
 
+        -- TODO: Notes for later
+        -- click a link
+        --   has an onclick
+        --     simulate it
+        --       if it stopped propagation, do nothing
+        --       otherwise, simulate click for every ancestor
+        --   does not have onclick
+        --     simulate click for every ancestor
         tryClicking { otherwise } tryClickingProgramTest =
             case tryClickingProgramTest of
                 Finished err ->
@@ -1042,14 +1050,22 @@ clickLink linkText href programTest =
 
                 Active state ->
                     let
-                        link =
+                        currentView =
                             state.program.view state.currentModel
-                                |> findLinkTag
+
+                        normalClickPreventDefault =
+                            (doClick normalClick currentView).preventDefault
+
+                        metaClickPreventDefault =
+                            (doClick metaClick currentView).preventDefault
+
+                        ctrlClickPreventDefault =
+                            (doClick ctrlClick currentView).preventDefault
                     in
-                    if respondsTo normalClick link then
+                    if normalClickPreventDefault then
                         -- there is a click handler
                         -- first make sure the handler properly respects "Open in new tab", etc
-                        if respondsTo ctrlClick link || respondsTo metaClick link then
+                        if ctrlClickPreventDefault || metaClickPreventDefault then
                             tryClickingProgramTest
                                 |> fail functionDescription
                                     (String.concat
@@ -1071,17 +1087,19 @@ clickLink linkText href programTest =
                         -- the link doesn't have a click handler
                         tryClickingProgramTest |> otherwise
 
-        respondsTo event single =
+        doClick : ( String, Json.Decode.Value ) -> Query.Single msg -> { preventDefault : Bool, msgs : List msg }
+        doClick event root =
             case
-                single
+                root
+                    |> findLinkTag
                     |> Test.Html.Event.simulate event
                     |> Test.Html.Event.toResult
             of
                 Err _ ->
-                    False
+                    { preventDefault = False, msgs = [] }
 
-                Ok _ ->
-                    True
+                Ok msg ->
+                    { preventDefault = True, msgs = [ msg ] }
     in
     programTest
         |> expectViewHelper functionDescription
